@@ -1,0 +1,20 @@
+---
+
+- name: Install prereqs
+  ansible.builtin.apt:
+    name:
+      - php-cli
+      - unzip
+      - zip
+  become: true
+
+- name: Install composer
+  ansible.builtin.script: scripts/install_composer.sh
+
+- name: Move composer
+  ansible.builtin.copy:
+    src: /home/vagrant/composer.phar
+    dest: /usr/local/bin/composer
+    remote_src: true
+    mode: '0755'
+  become: true

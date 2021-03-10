@@ -1,0 +1,36 @@
+---
+- name: Install prereqs
+  # https://pimcore.com/docs/pimcore/current/Development_Documentation/Installation_and_Upgrade/System_Requirements.html
+  ansible.builtin.apt:
+    name:
+      - php-mysql
+      - libc6
+      - php-xml
+      - php-gd
+      - exif
+      - php-zip
+      - php-curl
+      - php-mbstring
+      - php-intl
+  become: true
+
+- name: Delete Pimcore Directory
+  # This is to reset so that the next command works successfully
+  ansible.builtin.file:
+    path: /opt/pimcore
+    state: absent
+  become: true
+
+- name: Create Pimcore Directory
+  ansible.builtin.file:
+    path: /opt/pimcore
+    state: directory
+    mode: '0755'
+    owner: vagrant
+    group: vagrant
+  become: true
+
+- name: Install pimcore
+  ansible.builtin.shell: COMPOSER_MEMORY_LIMIT=-1 composer create-project pimcore/demo ./
+  args:
+    chdir: /opt/pimcore

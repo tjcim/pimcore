@@ -1,0 +1,22 @@
+---
+
+- hosts: all
+  tasks:
+
+    - name: Update System
+      apt:
+        upgrade: dist
+        update_cache: true
+      become: true
+
+    - name: Install convienience packages
+      apt:
+        name:
+          - mlocate
+      become: true
+
+    - include_tasks: mysql.yml
+    - include_tasks: nginx.yml
+    - include_tasks: nginx_php.yml
+    - include_tasks: composer.yml
+    - include_tasks: pimcore.yml

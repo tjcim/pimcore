@@ -1,0 +1,6 @@
+---
+- name: Install prereqs
+  ansible.builtin.apt:
+    name:
+      - php-fpm
+  become: true
