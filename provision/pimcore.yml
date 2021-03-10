@@ -1,36 +1,175 @@
 ---
-- name: Install prereqs
-  # https://pimcore.com/docs/pimcore/current/Development_Documentation/Installation_and_Upgrade/System_Requirements.html
-  ansible.builtin.apt:
-    name:
-      - php-mysql
-      - libc6
-      - php-xml
-      - php-gd
-      - exif
-      - php-zip
-      - php-curl
-      - php-mbstring
-      - php-intl
-  become: true
+- name: Install Pimcore
+  block:
 
-- name: Delete Pimcore Directory
-  # This is to reset so that the next command works successfully
-  ansible.builtin.file:
-    path: /opt/pimcore
-    state: absent
-  become: true
+    - name: Install prereqs
+      # https://pimcore.com/docs/pimcore/current/Development_Documentation/Installation_and_Upgrade/System_Requirements.html
+      # and https://pimcore.com/docs/pimcore/current/Development_Documentation/Installation_and_Upgrade/System_Setup_and_Hosting/Additional_Tools_Installation.html
+      ansible.builtin.apt:
+        name:
+          - php-mysql
+          - libc6
+          - php-xml
+          - php-gd
+          - exif
+          - php-zip
+          - php-curl
+          - php-mbstring
+          - php-intl
+          - ffmpeg
+          - libreoffice
+          - libreoffice-script-provider-python
+          - libreoffice-math
+          - xfonts-75dpi
+          - poppler-utils
+          - inkscape
+          - libxrender1
+          - libfontconfig1
+          - ghostscript
+          - libimage-exiftool-perl
+          - webp
+          - graphviz
+          - facedetect
+          - php-imagick
+          - redis-server
+          - php-apcu
+          - php-redis
 
-- name: Create Pimcore Directory
-  ansible.builtin.file:
-    path: /opt/pimcore
-    state: directory
-    mode: '0755'
-    owner: vagrant
-    group: vagrant
-  become: true
+    - name: Install ZopfliPNG
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/zopflipng-bin/raw/master/vendor/linux/zopflipng"
+        dest: /usr/local/bin/zopflipng
+        mode: 0755
 
-- name: Install pimcore
-  ansible.builtin.shell: COMPOSER_MEMORY_LIMIT=-1 composer create-project pimcore/demo ./
-  args:
-    chdir: /opt/pimcore
+    - name: Install PngCrush
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/pngcrush-bin/raw/master/vendor/linux/pngcrush"
+        dest: /usr/local/bin/pngcrush
+        mode: 0755
+
+    - name: Install JPEGOptim
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/jpegoptim-bin/raw/master/vendor/linux/jpegoptim"
+        dest: /usr/local/bin/jpegoptim
+        mode: 0755
+
+    - name: Install PNGOut
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/pngout-bin/raw/master/vendor/linux/x64/pngout"
+        dest: /usr/local/bin/pngout
+        mode: 0755
+
+    - name: Install AdvPNG
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/advpng-bin/raw/master/vendor/linux/advpng"
+        dest: /usr/local/bin/advpng
+        mode: 0755
+
+    - name: Install MozJPEG
+      ansible.builtin.get_url:
+        url: "https://github.com/imagemin/mozjpeg-bin/raw/master/vendor/linux/cjpeg"
+        dest: /usr/local/bin/cjpeg
+        mode: 0755
+
+    # Pimcore Files
+
+    - name: Delete Pimcore Directory
+      # This is to reset so that the next command works successfully
+      ansible.builtin.file:
+        path: /var/www/pimcore
+        state: absent
+
+    - name: Create Pimcore Directory
+      ansible.builtin.file:
+        path: /var/www/pimcore
+        state: directory
+        mode: '0755'
+        owner: vagrant
+        group: vagrant
+
+    - name: Install pimcore
+      ansible.builtin.shell: COMPOSER_MEMORY_LIMIT=-1 composer create-project pimcore/demo ./
+      args:
+        chdir: /var/www/pimcore
+      become: false
+
+    # Database Config
+
+    - name: Copy over database config file
+      ansible.builtin.copy:
+        src: "files/pimcore.cnf"
+        dest: "/etc/mysql/conf.d/pimcore.cnf"
+
+    - name: Restart MySQL.
+      service:
+        name: mysql
+        state: restarted
+        enabled: true
+
+    - name: Create pimcore database
+      community.mysql.mysql_db:
+        name: pimcore
+        state: present
+        encoding: utf8mb4
+
+    - name: Create pimcore mysql user with all permissions on pimcore database
+      community.mysql.mysql_user:
+        name: pimcore
+        password: pimcore
+        priv: 'pimcore.*:ALL'
+
+    # PHP Config
+
+    - name: Set php memory limit
+      ansible.builtin.lineinfile:
+        path: /etc/php/7.4/fpm/php.ini
+        regexp: '^memory_limit'
+        line: 'memory_limit = -1'
+
+    - name: Restart PHP-FPM
+      service:
+        name: php7.4-fpm.service
+        state: restarted
+        enabled: true
+
+    # Pimcore Setup
+
+    - name: Run the pimcore-install script
+      ansible.builtin.shell: ./vendor/bin/pimcore-install --admin-username admin --admin-password admin --mysql-username pimcore --mysql-password pimcore --mysql-database pimcore --no-interaction
+      args:
+        chdir: /var/www/pimcore
+      become: false
+
+      # Changing permissions using the guidelines found here:
+      # https://pimcore.com/docs/pimcore/current/Development_Documentation/Installation_and_Upgrade/System_Setup_and_Hosting/File_Permissions.html
+    - name: Give directory permissions to www-data
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        recurse: true
+        owner: www-data
+        group: www-data
+      loop:
+        - /var/www/pimcore/app/config
+        - /var/www/pimcore/bin
+        - /var/www/pimcore/var
+        - /var/www/pimcore/web/pimcore
+        - /var/www/pimcore/web/var
+
+    - name: Give file permissions to www-data
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: file
+        owner: www-data
+        group: www-data
+      loop:
+        - /var/www/pimcore/composer.json
+
+    - name: Set up maintenance cron job
+      ansible.builtin.cron:
+        name: pimcore maintenance
+        user: www-data
+        job: /var/www/pimcore/bin/console maintenance
+        minute: "*/5"
+
+  become: true
