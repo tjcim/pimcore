@@ -13,6 +13,7 @@
       apt:
         name:
           - mlocate
+          - python3-pip
       become: true
 
     - include_tasks: mysql.yml
